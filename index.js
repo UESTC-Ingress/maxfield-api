@@ -88,7 +88,7 @@ app.post("/submit", recaptcha.middleware.verify, (req, res) => {
         JSON.stringify({
           agents: req.body.agents,
           googlemap: req.body.googlemap,
-          portal: req.body.portals.replace(/,/g, "."),
+          portal: req.body.portals,
           faction: req.body.faction,
         })
       ),
