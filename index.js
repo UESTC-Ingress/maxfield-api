@@ -10,11 +10,21 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const fileUpload = require("express-fileupload");
 
+const redis = require("redis");
+const redis_client = redis.createClient({ password: process.env.REDIS_PASS });
+
+const Recaptcha = require("express-recaptcha").RecaptchaV3;
+
+const recaptcha = new Recaptcha(
+  process.env.RECAP_SITEKEY,
+  process.env.RECAP_SECRETKEY
+);
+
 const app = express();
 
-const { check, validationResult } = require("express-validator");
+const { body, validationResult } = require("express-validator");
 
-app.all("*", function(req, res, next) {
+app.all("*", function (req, res, next) {
   res.header("Access-Control-Allow-Origin", process.env.ORIGIN);
   res.header("Access-Control-Allow-Credentials", "true");
   res.header(
@@ -35,23 +45,40 @@ app.use(fileUpload());
 app.get("/", (req, res) => res.send("It works!"));
 
 app.get("/queue", [], (req, res) => {
-  channel.assertQueue(QUEUE).then(info => {
+  channel.assertQueue(QUEUE).then((info) => {
     res.send({
       error: false,
       inqueue: info.messageCount,
-      worker: info.consumerCount
+      worker: info.consumerCount,
     });
   });
 });
 
-app.post("/submit", [], (req, res) => {
+app.post("/status", [], (req, res) => {
+  redis_client.mget(req.body.tasks, (err, data) => {
+    res.send({
+      error: false,
+      data: data,
+    });
+  });
+});
+
+app.post("/submit", recaptcha.middleware.verify, (req, res) => {
+  body("agents").isInt();
+  body("googlemap").isBoolean();
+  body("faction").isIn(["res", "enl"]);
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(422).json({ error: true, errors: errors.array() });
+    return res
+      .status(422)
+      .json({ error: true, desc: "FIELD", errors: errors.array() });
+  }
+  if (req.recaptcha.error) {
+    return res.send({ error: true, desc: "CAPTCHA" });
   }
 
   var id = randomid();
-  channel.assertQueue(QUEUE).then(info => {
+  channel.assertQueue(QUEUE).then((info) => {
     channel.sendToQueue(
       QUEUE,
       Buffer.from(
@@ -59,29 +86,32 @@ app.post("/submit", [], (req, res) => {
           agents: req.body.agents,
           googlemap: req.body.googlemap,
           portal: req.body.portals,
-          faction: req.body.faction
+          faction: req.body.faction,
         })
       ),
       {
-        correlationId: id.uuid,
-        replyTo: "amq.rabbitmq.reply-to"
+        correlationId: id.taskid,
+        replyTo: "amq.rabbitmq.reply-to",
       }
     );
     res.send({ error: false, submitid: id.taskid, inqueue: info.messageCount });
   });
 });
 
+function getReply(msg) {
+  var reply_msg = JSON.parse(msg.content.toString());
+  var status = reply_msg.node;
+  if (reply_msg.status == false) status = "FAILED";
+  redis_client.set(msg.properties.correlationId, status);
+}
+
 function init() {
   return require("amqplib")
     .connect(process.env.AMQPURL)
-    .then(conn => conn.createChannel())
-    .then(ch => {
+    .then((conn) => conn.createChannel())
+    .then((ch) => {
       channel = ch;
-      ch.consume(
-        "amq.rabbitmq.reply-to",
-        msg => eventEmitter.emit(msg.properties.correlationId, msg.content),
-        { noAck: true }
-      );
+      ch.consume("amq.rabbitmq.reply-to", getReply, { noAck: true });
     });
 }
 
@@ -90,8 +120,8 @@ function randomid() {
   var ret2 = Math.random();
   var ret3 = Math.random();
   return {
-    uuid: ret1.toString() + ret2.toString() + ret3.toString(),
-    taskid: ret1.toString(16) + ret2.toString(16) + ret3.toString(16)
+    //uuid: ret1.toString() + ret2.toString() + ret3.toString(),
+    taskid: ret1.toString(16) + ret2.toString(16) + ret3.toString(16),
   };
 }
 
@@ -101,4 +131,4 @@ init()
       console.log("MaxField API running on port " + process.env.PORT + " !")
     )
   )
-  .catch(err => console.error(err));
+  .catch((err) => console.error(err));
