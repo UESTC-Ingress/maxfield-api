@@ -58,12 +58,21 @@ app.get("/queue", [], (req, res) => {
 });
 
 app.post("/status", [], (req, res) => {
-  redis_client.mget(req.body.tasks, (err, data) => {
-    res.send({
-      error: false,
-      data: data,
-    });
+  var created_list = [];
+  req.body.tasks.forEach((el) => {
+    created_list.push(el + ".created");
   });
+  redis_client
+    .multi()
+    .mget(req.body.tasks)
+    .mget(created_list)
+    .exec(function (errors, results) {
+      res.send({
+        error: false,
+        data: results[0],
+        expire: results[1],
+      });
+    });
 });
 
 app.post("/submit", recaptcha.middleware.verify, (req, res) => {
@@ -106,6 +115,12 @@ function getReply(msg) {
   var status = reply_msg.node;
   if (reply_msg.status == false) status = "FAILED";
   redis_client.set(msg.properties.correlationId, status);
+  redis_client.set(
+    msg.properties.correlationId + ".created",
+    new Date().getTime()
+  );
+  redis_client.expire(msg.properties.correlationId, 86400);
+  redis_client.expire(msg.properties.correlationId + ".created", 86400);
 }
 
 function init() {
