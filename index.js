@@ -6,9 +6,13 @@ let channel = null;
 
 const QUEUE = "maxfield-task";
 
+const request = require("request");
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const fileUpload = require("express-fileupload");
+
+const AMQPInfo = process.env.AMQPURL.match(/^amqp:\/\/(.+):(.+)@(.+)\/(.+)$/);
 
 const redis = require("redis");
 const redis_client = redis.createClient({
@@ -24,6 +28,10 @@ const recaptcha = new Recaptcha(
 );
 
 const app = express();
+
+var nodelist = [];
+
+app.use(express.static("data"));
 
 const { body, validationResult } = require("express-validator");
 
@@ -57,6 +65,45 @@ app.get("/queue", [], (req, res) => {
   });
 });
 
+function refreshWorkers() {
+  var options = {
+    auth: {
+      user: AMQPInfo[1],
+      pass: AMQPInfo[2],
+    },
+  };
+  var req = request.get(
+    "https://" + AMQPInfo[3] + "/api/consumers",
+    options,
+    function (err, res, data) {
+      var datajson = JSON.parse(data);
+      datajson.forEach((el) => {
+        var nodeinfo = el.consumer_tag.split(":");
+        nodelist.push({
+          name: nodeinfo[0],
+          endpoint: nodeinfo[1],
+        });
+      });
+      console.log("Worker Refreshed.")
+    }
+  );
+}
+
+app.get("/stats", [], (req, res) => {
+  redis_client
+    .multi()
+    .get("status.submits")
+    .get("status.success")
+    .exec(function (errors, results) {
+      res.send({
+        error: false,
+        submits: results[0],
+        success: results[1],
+        nodes: nodelist
+      });
+    });
+});
+
 app.post("/status", [], (req, res) => {
   var created_list = [];
   req.body.tasks.forEach((el) => {
@@ -71,6 +118,7 @@ app.post("/status", [], (req, res) => {
         error: false,
         data: results[0],
         expire: results[1],
+        nodes: nodelist,
       });
     });
 });
@@ -108,22 +156,29 @@ app.post("/submit", recaptcha.middleware.verify, (req, res) => {
     );
     res.send({ error: false, submitid: id.taskid, inqueue: info.messageCount });
   });
+  redis_client.incr("status.submits");
 });
 
 function getReply(msg) {
   var reply_msg = JSON.parse(msg.content.toString());
   var status = reply_msg.node;
-  if (reply_msg.status == false) status = "FAILED";
+  if (reply_msg.status == false) {
+    status = "FAILED";
+  } else {
+    redis_client.set(
+      msg.properties.correlationId + ".created",
+      new Date().getTime()
+    );
+    redis_client.expire(msg.properties.correlationId + ".created", 86400);
+    redis_client.incr("status.success");
+  }
   redis_client.set(msg.properties.correlationId, status);
-  redis_client.set(
-    msg.properties.correlationId + ".created",
-    new Date().getTime()
-  );
   redis_client.expire(msg.properties.correlationId, 86400);
-  redis_client.expire(msg.properties.correlationId + ".created", 86400);
 }
 
 function init() {
+  refreshWorkers()
+  setInterval(refreshWorkers, 300000);
   return require("amqplib")
     .connect(process.env.AMQPURL)
     .then((conn) => conn.createChannel())

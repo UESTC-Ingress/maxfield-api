@@ -1,6 +1,6 @@
 {
   "name": "maxfield-api",
-  "version": "1.0.0",
+  "version": "2.1.20.04.08",
   "description": "MaxField NIA-CN API",
   "main": "index.js",
   "author": "Yukari Chiba",
@@ -15,6 +15,7 @@
     "express-validator": "^6.4.0",
     "imagemin": "^7.0.1",
     "imagemin-pngquant": "^8.0.0",
-    "redis": "^3.0.2"
+    "redis": "^3.0.2",
+    "request": "^2.88.2"
   }
 }
