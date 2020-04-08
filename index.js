@@ -66,6 +66,7 @@ app.get("/queue", [], (req, res) => {
 });
 
 function refreshWorkers() {
+  var refreshed_list = []
   var options = {
     auth: {
       user: AMQPInfo[1],
@@ -79,12 +80,13 @@ function refreshWorkers() {
       var datajson = JSON.parse(data);
       datajson.forEach((el) => {
         var nodeinfo = el.consumer_tag.split(":");
-        nodelist.push({
+        refreshed_list.push({
           name: nodeinfo[0],
           endpoint: nodeinfo[1],
         });
       });
-      console.log("Worker Refreshed.")
+      nodelist = refreshed_list
+      console.log("Worker Refreshed.");
     }
   );
 }
@@ -99,9 +101,26 @@ app.get("/stats", [], (req, res) => {
         error: false,
         submits: results[0],
         success: results[1],
-        nodes: nodelist
+        nodes: nodelist,
       });
     });
+});
+
+app.get("/file/:endpoint/:taskid/:filename", [], (req, res) => {
+  var getnode = nodelist.find((o) => o.name === req.params.endpoint);
+  if (getnode) {
+    res.redirect(
+      301,
+      "https://" +
+        getnode.endpoint +
+        "/" +
+        req.params.taskid +
+        "/" +
+        req.params.filename
+    );
+  } else {
+    res.status(404).send("Not Found");
+  }
 });
 
 app.post("/status", [], (req, res) => {
@@ -118,7 +137,6 @@ app.post("/status", [], (req, res) => {
         error: false,
         data: results[0],
         expire: results[1],
-        nodes: nodelist,
       });
     });
 });
@@ -177,7 +195,7 @@ function getReply(msg) {
 }
 
 function init() {
-  refreshWorkers()
+  refreshWorkers();
   setInterval(refreshWorkers, 300000);
   return require("amqplib")
     .connect(process.env.AMQPURL)
