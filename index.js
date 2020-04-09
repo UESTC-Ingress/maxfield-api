@@ -192,12 +192,9 @@ function getReply(msg) {
     redis_client.set(msg.properties.correlationId, status);
     redis_client.expire(msg.properties.correlationId, 86400);
   }
-  refreshWorkers();
 }
 
 function init() {
-  refreshWorkers();
-  setInterval(refreshWorkers, 300000);
   return require("amqplib")
     .connect(process.env.AMQPURL)
     .then((conn) => conn.createChannel())
