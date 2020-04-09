@@ -25,8 +25,6 @@ const recaptcha = new Recaptcha(
 
 const app = express();
 
-var nodelist = [];
-
 var noders = [
   {
     suffix: "stevecharlesyang.cloud.okteto.net",
@@ -82,7 +80,7 @@ app.get("/queue", [], (req, res) => {
     res.send({
       error: false,
       inqueue: info.messageCount,
-      worker: nodecount,
+      worker: nodelist.length,
     });
   });
 });
