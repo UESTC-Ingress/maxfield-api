@@ -23,6 +23,8 @@ const recaptcha = new Recaptcha(
   process.env.RECAP_SECRETKEY
 );
 
+var nodelist = [];
+
 const app = express();
 
 var noders = [
@@ -48,8 +50,6 @@ noders.forEach((noder) => {
     }
   });
 });
-
-var nodelist = [];
 
 app.use(express.static("data"));
 
