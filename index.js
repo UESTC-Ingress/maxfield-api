@@ -49,7 +49,7 @@ noders.forEach((noder) => {
   });
 });
 
-var nodecount = 0;
+var nodelist = [];
 
 app.use(express.static("data"));
 
