@@ -31,6 +31,32 @@ const app = express();
 
 var nodelist = [];
 
+var noders = [
+  {
+    suffix: "stevecharlesyang.cloud.okteto.net",
+    count: 2,
+    namespaces: ["Alpha", "Beta"],
+  },
+  {
+    suffix: "mrpeterjin.cloud.okteto.net",
+    count: 2,
+    namespaces: ["Gamma", "Delta"],
+  },
+];
+
+noders.forEach((noder) => {
+  noder.namespaces.forEach((ns) => {
+    for (let index = 1; index <= noder.count; index++) {
+      nodelist.push({
+        name: ns + "-" + index,
+        endpoint: "worker-" + index + "-" + ns + "-" + noder.suffix,
+      });
+    }
+  });
+});
+
+var nodecount = 0;
+
 app.use(express.static("data"));
 
 const { body, validationResult } = require("express-validator");
@@ -60,13 +86,12 @@ app.get("/queue", [], (req, res) => {
     res.send({
       error: false,
       inqueue: info.messageCount,
-      worker: info.consumerCount,
+      worker: nodecount,
     });
   });
 });
 
 function refreshWorkers() {
-  var refreshed_list = [];
   var options = {
     auth: {
       user: AMQPInfo[1],
@@ -74,18 +99,11 @@ function refreshWorkers() {
     },
   };
   var req = request.get(
-    "https://" + AMQPInfo[3] + "/api/consumers",
+    "https://" + AMQPInfo[3] + "/api/channels",
     options,
     function (err, res, data) {
       var datajson = JSON.parse(data);
-      datajson.forEach((el) => {
-        var nodeinfo = el.consumer_tag.split(":");
-        refreshed_list.push({
-          name: nodeinfo[0],
-          endpoint: nodeinfo[1],
-        });
-      });
-      nodelist = refreshed_list;
+      nodecount = datajson.length;
       console.log("Worker Refreshed.");
     }
   );
