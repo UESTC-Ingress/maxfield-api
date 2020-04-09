@@ -6,13 +6,9 @@ let channel = null;
 
 const QUEUE = "maxfield-task";
 
-const request = require("request");
-
 const express = require("express");
 const bodyParser = require("body-parser");
 const fileUpload = require("express-fileupload");
-
-const AMQPInfo = process.env.AMQPURL.match(/^amqp:\/\/(.+):(.+)@(.+)\/(.+)$/);
 
 const redis = require("redis");
 const redis_client = redis.createClient({
@@ -90,24 +86,6 @@ app.get("/queue", [], (req, res) => {
     });
   });
 });
-
-function refreshWorkers() {
-  var options = {
-    auth: {
-      user: AMQPInfo[1],
-      pass: AMQPInfo[2],
-    },
-  };
-  var req = request.get(
-    "https://" + AMQPInfo[3] + "/api/channels",
-    options,
-    function (err, res, data) {
-      var datajson = JSON.parse(data);
-      nodecount = datajson.length;
-      console.log("Worker Refreshed.");
-    }
-  );
-}
 
 app.get("/stats", [], (req, res) => {
   redis_client
