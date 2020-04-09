@@ -66,7 +66,7 @@ app.get("/queue", [], (req, res) => {
 });
 
 function refreshWorkers() {
-  var refreshed_list = []
+  var refreshed_list = [];
   var options = {
     auth: {
       user: AMQPInfo[1],
@@ -85,7 +85,7 @@ function refreshWorkers() {
           endpoint: nodeinfo[1],
         });
       });
-      nodelist = refreshed_list
+      nodelist = refreshed_list;
       console.log("Worker Refreshed.");
     }
   );
@@ -180,18 +180,23 @@ app.post("/submit", recaptcha.middleware.verify, (req, res) => {
 function getReply(msg) {
   var reply_msg = JSON.parse(msg.content.toString());
   var status = reply_msg.node;
-  if (reply_msg.status == false) {
-    status = "FAILED";
+  if (status.endsWith(".processing")) {
+    redis_client.set(msg.properties.correlationId, status);
   } else {
-    redis_client.set(
-      msg.properties.correlationId + ".created",
-      new Date().getTime()
-    );
-    redis_client.expire(msg.properties.correlationId + ".created", 86400);
-    redis_client.incr("status.success");
+    if (reply_msg.status == false) {
+      status = "FAILED";
+    } else {
+      redis_client.set(
+        msg.properties.correlationId + ".created",
+        new Date().getTime()
+      );
+      redis_client.expire(msg.properties.correlationId + ".created", 86400);
+      redis_client.incr("status.success");
+    }
+    redis_client.set(msg.properties.correlationId, status);
+    redis_client.expire(msg.properties.correlationId, 86400);
   }
-  redis_client.set(msg.properties.correlationId, status);
-  redis_client.expire(msg.properties.correlationId, 86400);
+  refreshWorkers();
 }
 
 function init() {
