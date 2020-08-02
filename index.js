@@ -31,8 +31,6 @@ const app = express();
 
 app.use(express.static("data"));
 
-const AMQPInfo = process.env.AMQPURL.match(/^amqp:\/\/(.+):(.+)@(.+)\/(.+)$/);
-
 const { body, validationResult } = require("express-validator");
 
 app.all("*", function (req, res, next) {
@@ -64,6 +62,20 @@ app.get("/queue", [], (req, res) => {
     });
   });
 });
+
+app.post("/update_node", [], (req, res) => {
+  if (nodelist.some(e => e.name == req.body.node)){
+    var nodeidx = nodelist.findIndex((e => e.name == req.body.node));
+    nodelist[nodeidx].updated = + new Date()
+  }else{
+    nodelist.push({
+      name: req.body.node,
+      cores: req.body.cores,
+      updated: + new Date()
+    });
+  }
+  res.send("OK")
+})
 
 app.get("/stats", [], (req, res) => {
   redis_client
@@ -134,31 +146,6 @@ app.post("/submit", recaptcha.middleware.verify, (req, res) => {
   redis_client.incr("status.submits");
 });
 
-function refreshWorkers() {
-  var options = {
-    auth: {
-      user: AMQPInfo[1],
-      pass: AMQPInfo[2],
-    },
-  };
-  var req = request.get(
-    "https://" + AMQPInfo[3] + "/api/consumers",
-    options,
-    function (err, res, data) {
-      nodelist = []
-      var datajson = JSON.parse(data);
-      datajson.forEach((el) => {
-        var nodeinfo = el.consumer_tag.split(":");
-        nodelist.push({
-          name: nodeinfo[0],
-          cores: nodeinfo[1],
-        });
-      });
-      console.log("Worker Refreshed.")
-    }
-  );
-}
-
 function getReply(msg) {
   var reply_msg = JSON.parse(msg.content.toString());
   var status = reply_msg.node;
@@ -200,9 +187,14 @@ function randomid() {
   };
 }
 
-refreshWorkers()
+function purge_node() {
+  var t =  + new Date()
+  nodelist = nodelist.filter(function( n ) {
+    return t - n.updated < 1800000;
+  });
+}
 
-setInterval(refreshWorkers, 30000);
+setInterval(purge_node, 1800000)
 
 init()
   .then(() =>
