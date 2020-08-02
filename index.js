@@ -1,5 +1,7 @@
 const amqplib = require("amqplib");
 
+const request = require("request")
+
 require("dotenv").config();
 
 let channel = null;
@@ -27,31 +29,9 @@ var nodelist = [];
 
 const app = express();
 
-var noders = [
-  {
-    suffix: "stevecharlesyang.cloud.okteto.net",
-    count: 2,
-    namespaces: ["Alpha", "Beta"],
-  },
-  {
-    suffix: "mrpeterjin.cloud.okteto.net",
-    count: 2,
-    namespaces: ["Gamma", "Delta"],
-  },
-];
-
-noders.forEach((noder) => {
-  noder.namespaces.forEach((ns) => {
-    for (let index = 1; index <= noder.count; index++) {
-      nodelist.push({
-        name: ns + "-" + index,
-        endpoint: "worker-" + index + "-" + ns + "-" + noder.suffix,
-      });
-    }
-  });
-});
-
 app.use(express.static("data"));
+
+const AMQPInfo = process.env.AMQPURL.match(/^amqp:\/\/(.+):(.+)@(.+)\/(.+)$/);
 
 const { body, validationResult } = require("express-validator");
 
@@ -98,23 +78,6 @@ app.get("/stats", [], (req, res) => {
         nodes: nodelist,
       });
     });
-});
-
-app.get("/file/:endpoint/:taskid/:filename", [], (req, res) => {
-  var getnode = nodelist.find((o) => o.name === req.params.endpoint);
-  if (getnode) {
-    res.redirect(
-      301,
-      "https://" +
-        getnode.endpoint +
-        "/" +
-        req.params.taskid +
-        "/" +
-        req.params.filename
-    );
-  } else {
-    res.status(404).send("Not Found");
-  }
 });
 
 app.post("/status", [], (req, res) => {
@@ -171,6 +134,31 @@ app.post("/submit", recaptcha.middleware.verify, (req, res) => {
   redis_client.incr("status.submits");
 });
 
+function refreshWorkers() {
+  var options = {
+    auth: {
+      user: AMQPInfo[1],
+      pass: AMQPInfo[2],
+    },
+  };
+  var req = request.get(
+    "https://" + AMQPInfo[3] + "/api/consumers",
+    options,
+    function (err, res, data) {
+      nodelist = []
+      var datajson = JSON.parse(data);
+      datajson.forEach((el) => {
+        var nodeinfo = el.consumer_tag.split(":");
+        nodelist.push({
+          name: nodeinfo[0],
+          cores: nodeinfo[1],
+        });
+      });
+      console.log("Worker Refreshed.")
+    }
+  );
+}
+
 function getReply(msg) {
   var reply_msg = JSON.parse(msg.content.toString());
   var status = reply_msg.node;
@@ -211,6 +199,10 @@ function randomid() {
     taskid: ret1.toString(16) + ret2.toString(16) + ret3.toString(16),
   };
 }
+
+refreshWorkers()
+
+setInterval(refreshWorkers, 30000);
 
 init()
   .then(() =>
