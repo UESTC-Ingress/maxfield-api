@@ -13,10 +13,7 @@ const bodyParser = require("body-parser");
 const fileUpload = require("express-fileupload");
 
 const redis = require("redis");
-const redis_client = redis.createClient({
-  host: process.env.REDIS_HOST,
-  password: process.env.REDIS_PASS,
-});
+const redis_client = redis.createClient({host: process.env.REDIS_HOST});
 
 const Recaptcha = require("express-recaptcha").RecaptchaV3;
 
@@ -198,7 +195,7 @@ setInterval(purge_node, 1800000)
 
 init()
   .then(() =>
-    app.listen(process.env.PORT, () =>
+    app.listen(process.env.PORT, process.env.ADDR, () =>
       console.log("MaxField API running on port " + process.env.PORT + " !")
     )
   )
